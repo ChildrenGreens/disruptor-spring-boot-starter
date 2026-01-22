@@ -37,13 +37,11 @@ spring:
         buffer-size: 65536
         producer-type: MULTI
         wait-strategy: BLOCKING
-        threads: 4
         exception-handler: LOG_AND_CONTINUE
       audit:
         buffer-size: 16384
         producer-type: SINGLE
         wait-strategy: YIELDING
-        threads: 2
         exception-handler: LOG_AND_HALT
 ```
 
@@ -131,4 +129,4 @@ per‑handler counts.
 - Batch mode is supported for handler mode only.
 - If you publish before the Disruptor lifecycle starts, an exception is thrown.
 - Ring buffer size must be a power of two.
-
+- Ring selection for subscribers currently uses `@DisruptorSubscriber.ring`; `@DisruptorRing` is reserved for future injection use.

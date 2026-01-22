@@ -7,7 +7,6 @@ public class RingProperties {
     private int bufferSize = 1024;
     private ProducerType producerType = ProducerType.MULTI;
     private WaitStrategyType waitStrategy = WaitStrategyType.BLOCKING;
-    private int threads = 1;
     private ExceptionHandlerType exceptionHandler = ExceptionHandlerType.LOG_AND_CONTINUE;
 
     public int getBufferSize() {
@@ -32,14 +31,6 @@ public class RingProperties {
 
     public void setWaitStrategy(WaitStrategyType waitStrategy) {
         this.waitStrategy = waitStrategy;
-    }
-
-    public int getThreads() {
-        return threads;
-    }
-
-    public void setThreads(int threads) {
-        this.threads = threads;
     }
 
     public ExceptionHandlerType getExceptionHandler() {

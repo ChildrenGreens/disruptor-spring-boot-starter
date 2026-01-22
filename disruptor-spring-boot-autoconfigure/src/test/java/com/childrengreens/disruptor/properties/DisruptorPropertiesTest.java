@@ -35,7 +35,6 @@ class DisruptorPropertiesTest {
                         "spring.disruptor.rings.fast.buffer-size=2048",
                         "spring.disruptor.rings.fast.producer-type=SINGLE",
                         "spring.disruptor.rings.fast.wait-strategy=BUSY_SPIN",
-                        "spring.disruptor.rings.fast.threads=4",
                         "spring.disruptor.rings.fast.exception-handler=LOG_AND_HALT")
                 .run(context -> {
                     DisruptorProperties properties = context.getBean(DisruptorProperties.class);
@@ -44,7 +43,6 @@ class DisruptorPropertiesTest {
                     assertThat(ring.getBufferSize()).isEqualTo(2048);
                     assertThat(ring.getProducerType()).isEqualTo(ProducerType.SINGLE);
                     assertThat(ring.getWaitStrategy()).isEqualTo(WaitStrategyType.BUSY_SPIN);
-                    assertThat(ring.getThreads()).isEqualTo(4);
                     assertThat(ring.getExceptionHandler()).isEqualTo(ExceptionHandlerType.LOG_AND_HALT);
                 });
     }

@@ -246,10 +246,6 @@ public class DisruptorManager {
                                 + " bufferSize must be a power of two, but was "
                                 + bufferSize);
             }
-            if (props.getThreads() <= 0) {
-                throw new IllegalArgumentException(
-                        "Ring " + entry.getKey() + " threads must be positive.");
-            }
         }
     }
 

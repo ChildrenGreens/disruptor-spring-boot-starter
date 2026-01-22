@@ -68,19 +68,6 @@ class DisruptorManagerTest {
     }
 
     @Test
-    void startRejectsNonPositiveThreadCount() {
-        DisruptorProperties properties = new DisruptorProperties();
-        RingProperties ring = new RingProperties();
-        ring.setThreads(0);
-        properties.setRings(Map.of("bad", ring));
-        DisruptorManager manager = newManager(properties, new SubscriberRegistry());
-
-        assertThatThrownBy(manager::start)
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("threads must be positive");
-    }
-
-    @Test
     void stopIsNoopWhenNotRunning() {
         DisruptorManager manager = newManager(new DisruptorProperties(), new SubscriberRegistry());
         manager.stop(Duration.ofMillis(10), ShutdownStrategy.DRAIN);

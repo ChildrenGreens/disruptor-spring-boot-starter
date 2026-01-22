@@ -11,7 +11,6 @@ class RingPropertiesTest {
         assertThat(properties.getBufferSize()).isEqualTo(1024);
         assertThat(properties.getProducerType()).isEqualTo(ProducerType.MULTI);
         assertThat(properties.getWaitStrategy()).isEqualTo(WaitStrategyType.BLOCKING);
-        assertThat(properties.getThreads()).isEqualTo(1);
         assertThat(properties.getExceptionHandler()).isEqualTo(ExceptionHandlerType.LOG_AND_CONTINUE);
     }
 }
