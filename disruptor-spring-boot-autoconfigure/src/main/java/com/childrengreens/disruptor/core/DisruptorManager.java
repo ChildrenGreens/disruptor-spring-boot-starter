@@ -28,8 +28,6 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
@@ -53,7 +51,6 @@ public class DisruptorManager {
     private final WorkerPoolSupport workerPoolSupport;
     private final Map<String, Disruptor<DisruptorEvent>> disruptors = new LinkedHashMap<>();
     private final Map<String, RingBuffer<DisruptorEvent>> ringBuffers = new LinkedHashMap<>();
-    private final Map<String, ExecutorService> executors = new LinkedHashMap<>();
     private volatile boolean running = false;
 
     public DisruptorManager(
@@ -90,7 +87,7 @@ public class DisruptorManager {
             Disruptor<DisruptorEvent> disruptor = buildDisruptor(ringName, ringProperties);
             ExceptionHandler<DisruptorEvent> exceptionHandler =
                     exceptionHandlerSupport.create(ringProperties.getExceptionHandler(), ringName);
-            disruptor.handleExceptionsWith(exceptionHandler);
+            disruptor.setDefaultExceptionHandler(exceptionHandler);
 
             Map<Integer, List<EventHandler<DisruptorEvent>>> ringEventHandlers =
                     orderedHandlers.get(ringName);
@@ -156,10 +153,6 @@ public class DisruptorManager {
         }
         disruptors.clear();
         ringBuffers.clear();
-        for (ExecutorService executor : executors.values()) {
-            executor.shutdown();
-        }
-        executors.clear();
         running = false;
     }
 
@@ -265,12 +258,10 @@ public class DisruptorManager {
      */
     private Disruptor<DisruptorEvent> buildDisruptor(String ring, RingProperties props) {
         ThreadFactory threadFactory = new NamedThreadFactory("disruptor-" + ring + "-");
-        ExecutorService executor = Executors.newFixedThreadPool(props.getThreads(), threadFactory);
-        executors.put(ring, executor);
         return new Disruptor<>(
                 new DisruptorEventFactory(),
                 props.getBufferSize(),
-                executor,
+                threadFactory,
                 toProducerType(props.getProducerType()),
                 toWaitStrategy(props.getWaitStrategy()));
     }
