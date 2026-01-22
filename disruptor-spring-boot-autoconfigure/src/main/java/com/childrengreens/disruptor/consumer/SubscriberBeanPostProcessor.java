@@ -60,6 +60,7 @@ public class SubscriberBeanPostProcessor implements BeanPostProcessor {
         for (Method method : methods) {
             if (method.isSynthetic()
                     || method.isBridge()
+                    || method.getDeclaringClass() == Object.class
                     || Modifier.isStatic(method.getModifiers())) {
                 continue;
             }
