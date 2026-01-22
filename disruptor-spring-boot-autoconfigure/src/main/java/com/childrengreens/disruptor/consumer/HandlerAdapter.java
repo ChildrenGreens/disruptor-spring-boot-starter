@@ -1,0 +1,408 @@
+package com.childrengreens.disruptor.consumer;
+
+import com.childrengreens.disruptor.annotation.Concurrency;
+import com.childrengreens.disruptor.annotation.ExceptionPolicy;
+import com.childrengreens.disruptor.core.DisruptorEvent;
+import com.childrengreens.disruptor.core.DisruptorMetrics;
+import com.lmax.disruptor.EventHandler;
+import com.lmax.disruptor.WorkHandler;
+
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.util.ReflectionUtils;
+
+/**
+ * Adapter that converts subscriber definitions to Disruptor handlers.
+ */
+public class HandlerAdapter {
+    private static final Logger log = LoggerFactory.getLogger(HandlerAdapter.class);
+    private final DisruptorMetrics metrics;
+
+    public HandlerAdapter(DisruptorMetrics metrics) {
+        this.metrics = metrics;
+    }
+
+    /**
+     * Adapt handler-mode subscribers by ring.
+     */
+    public Map<String, List<EventHandler<DisruptorEvent>>> adaptEventHandlers(
+            SubscriberRegistry registry) {
+        return adapt(registry, Concurrency.MODE_HANDLER);
+    }
+
+    /**
+     * Adapt worker-mode subscribers by ring.
+     */
+    public Map<String, List<WorkHandler<DisruptorEvent>>> adaptWorkHandlers(
+            SubscriberRegistry registry) {
+        Map<String, List<SubscriberDefinition>> grouped =
+                groupByRing(registry, Concurrency.MODE_WORKER);
+        Map<String, List<WorkHandler<DisruptorEvent>>> handlers = new LinkedHashMap<>();
+        for (Map.Entry<String, List<SubscriberDefinition>> entry : grouped.entrySet()) {
+            List<WorkHandler<DisruptorEvent>> adapted = new ArrayList<>();
+            for (SubscriberDefinition definition : entry.getValue()) {
+                WorkHandler<DisruptorEvent> handler = adaptWorkHandler(definition);
+                if (handler != null) {
+                    adapted.add(handler);
+                }
+            }
+            if (!adapted.isEmpty()) {
+                handlers.put(entry.getKey(), adapted);
+            }
+        }
+        return handlers;
+    }
+
+    /**
+     * Adapt subscribers for the given concurrency mode.
+     */
+    private Map<String, List<EventHandler<DisruptorEvent>>> adapt(
+            SubscriberRegistry registry, Concurrency mode) {
+        Map<String, List<SubscriberDefinition>> grouped = groupByRing(registry, mode);
+        Map<String, List<EventHandler<DisruptorEvent>>> handlers = new LinkedHashMap<>();
+        for (Map.Entry<String, List<SubscriberDefinition>> entry : grouped.entrySet()) {
+            List<EventHandler<DisruptorEvent>> adapted = new ArrayList<>();
+            for (SubscriberDefinition definition : entry.getValue()) {
+                EventHandler<DisruptorEvent> handler = adaptEventHandler(definition);
+                if (handler != null) {
+                    adapted.add(handler);
+                }
+            }
+            if (!adapted.isEmpty()) {
+                handlers.put(entry.getKey(), adapted);
+            }
+        }
+        return handlers;
+    }
+
+    /**
+     * Group definitions by ring name.
+     */
+    private Map<String, List<SubscriberDefinition>> groupByRing(
+            SubscriberRegistry registry, Concurrency mode) {
+        return registry.getDefinitions().stream()
+                .filter(def -> def.getMode() == mode)
+                .sorted(Comparator.comparingInt(SubscriberDefinition::getOrder))
+                .collect(Collectors.groupingBy(SubscriberDefinition::getRing));
+    }
+
+    /**
+     * Adapt a single definition to an {@link EventHandler} when possible.
+     */
+    public EventHandler<DisruptorEvent> adaptEventHandler(SubscriberDefinition definition) {
+        if (definition.getMethod() == null) {
+            if (definition.getBean() instanceof EventHandler) {
+                @SuppressWarnings("unchecked")
+                EventHandler<DisruptorEvent> handler =
+                        (EventHandler<DisruptorEvent>) definition.getBean();
+                return new DelegatingEventHandler(definition, handler, metrics);
+            }
+            log.warn(
+                    "Bean {} does not implement EventHandler, skip ring={}",
+                    definition.getBeanName(),
+                    definition.getRing());
+            return null;
+        }
+        return new MethodEventHandler(definition, metrics);
+    }
+
+    /**
+     * Adapt a single definition to a {@link WorkHandler} when possible.
+     */
+    public WorkHandler<DisruptorEvent> adaptWorkHandler(SubscriberDefinition definition) {
+        if (definition.getMethod() == null) {
+            if (definition.getBean() instanceof WorkHandler) {
+                @SuppressWarnings("unchecked")
+                WorkHandler<DisruptorEvent> handler =
+                        (WorkHandler<DisruptorEvent>) definition.getBean();
+                return new DelegatingWorkHandler(definition, handler, metrics);
+            }
+            log.warn(
+                    "Bean {} does not implement WorkHandler, skip ring={}",
+                    definition.getBeanName(),
+                    definition.getRing());
+            return null;
+        }
+        if (definition.isBatch()) {
+            log.warn(
+                    "Batch mode is not supported for worker handlers. Skip bean={}",
+                    definition.getBeanName());
+            return null;
+        }
+        return new MethodWorkHandler(definition, metrics);
+    }
+
+    /**
+     * Method-based handler adapter for handler mode.
+     */
+    private static final class MethodEventHandler implements EventHandler<DisruptorEvent> {
+        private final SubscriberDefinition definition;
+        private final Object target;
+        private final Method method;
+        private final List<Object> batchBuffer = new ArrayList<>();
+        private final DisruptorMetrics metrics;
+
+        private MethodEventHandler(SubscriberDefinition definition, DisruptorMetrics metrics) {
+            this.definition = definition;
+            this.target = definition.getBean();
+            this.method = definition.getMethod();
+            this.metrics = metrics;
+        }
+
+        @Override
+        public void onEvent(DisruptorEvent event, long sequence, boolean endOfBatch) {
+            if (!matchesEventType(event)) {
+                return;
+            }
+            try {
+                if (definition.isBatch()) {
+                    batchBuffer.add(event.getPayload());
+                    if (shouldFlush(endOfBatch)) {
+                        ReflectionUtils.invokeMethod(method, target, new ArrayList<>(batchBuffer));
+                        batchBuffer.clear();
+                    }
+                } else {
+                    ReflectionUtils.invokeMethod(method, target, event.getPayload());
+                }
+                recordMetrics(event);
+            } catch (Throwable ex) {
+                handleException(ex);
+            }
+        }
+
+        private boolean matchesEventType(DisruptorEvent event) {
+            String expected = definition.getEventType();
+            if (expected == null || expected.isEmpty()) {
+                return true;
+            }
+            return expected.equals(event.getEventType());
+        }
+
+        private boolean shouldFlush(boolean endOfBatch) {
+            if (!definition.isBatch()) {
+                return false;
+            }
+            int batchSize = definition.getBatchSize();
+            if (batchSize > 0 && batchBuffer.size() >= batchSize) {
+                return true;
+            }
+            return endOfBatch;
+        }
+
+        private void handleException(Throwable ex) {
+            ExceptionPolicy policy = definition.getExceptionPolicy();
+            if (policy == ExceptionPolicy.LOG_AND_CONTINUE) {
+                log.warn(
+                        "Subscriber invocation failed (bean={} method={}).",
+                        definition.getBeanName(),
+                        method.getName(),
+                        ex);
+                return;
+            }
+            throw ex instanceof RuntimeException ? (RuntimeException) ex : new RuntimeException(ex);
+        }
+
+        private void recordMetrics(DisruptorEvent event) {
+            if (metrics == null) {
+                return;
+            }
+            metrics.recordConsume(definition.getRing(), definition.getHandlerId());
+            long createdAt = event.getCreatedAt();
+            if (createdAt > 0) {
+                metrics.recordLatency(
+                        definition.getRing(), Math.max(0, System.currentTimeMillis() - createdAt));
+            }
+        }
+    }
+
+    /**
+     * Method-based handler adapter for worker mode.
+     */
+    private static final class MethodWorkHandler implements WorkHandler<DisruptorEvent> {
+        private final SubscriberDefinition definition;
+        private final Object target;
+        private final Method method;
+        private final DisruptorMetrics metrics;
+
+        private MethodWorkHandler(SubscriberDefinition definition, DisruptorMetrics metrics) {
+            this.definition = definition;
+            this.target = definition.getBean();
+            this.method = definition.getMethod();
+            this.metrics = metrics;
+        }
+
+        @Override
+        public void onEvent(DisruptorEvent event) {
+            if (!matchesEventType(event)) {
+                return;
+            }
+            try {
+                ReflectionUtils.invokeMethod(method, target, event.getPayload());
+                recordMetrics(event);
+            } catch (Throwable ex) {
+                handleException(ex);
+            }
+        }
+
+        private boolean matchesEventType(DisruptorEvent event) {
+            String expected = definition.getEventType();
+            if (expected == null || expected.isEmpty()) {
+                return true;
+            }
+            return expected.equals(event.getEventType());
+        }
+
+        private void handleException(Throwable ex) {
+            ExceptionPolicy policy = definition.getExceptionPolicy();
+            if (policy == ExceptionPolicy.LOG_AND_CONTINUE) {
+                log.warn(
+                        "Subscriber invocation failed (bean={} method={}).",
+                        definition.getBeanName(),
+                        method.getName(),
+                        ex);
+                return;
+            }
+            throw ex instanceof RuntimeException ? (RuntimeException) ex : new RuntimeException(ex);
+        }
+
+        private void recordMetrics(DisruptorEvent event) {
+            if (metrics == null) {
+                return;
+            }
+            metrics.recordConsume(definition.getRing(), definition.getHandlerId());
+            long createdAt = event.getCreatedAt();
+            if (createdAt > 0) {
+                metrics.recordLatency(
+                        definition.getRing(), Math.max(0, System.currentTimeMillis() - createdAt));
+            }
+        }
+    }
+
+    private static final class DelegatingEventHandler implements EventHandler<DisruptorEvent> {
+        private final SubscriberDefinition definition;
+        private final EventHandler<DisruptorEvent> delegate;
+        private final DisruptorMetrics metrics;
+
+        private DelegatingEventHandler(
+                SubscriberDefinition definition,
+                EventHandler<DisruptorEvent> delegate,
+                DisruptorMetrics metrics) {
+            this.definition = definition;
+            this.delegate = delegate;
+            this.metrics = metrics;
+        }
+
+        @Override
+        public void onEvent(DisruptorEvent event, long sequence, boolean endOfBatch) {
+            if (!matchesEventType(event)) {
+                return;
+            }
+            try {
+                delegate.onEvent(event, sequence, endOfBatch);
+                recordMetrics(event);
+            } catch (Throwable ex) {
+                handleException(ex);
+            }
+        }
+
+        private boolean matchesEventType(DisruptorEvent event) {
+            String expected = definition.getEventType();
+            if (expected == null || expected.isEmpty()) {
+                return true;
+            }
+            return expected.equals(event.getEventType());
+        }
+
+        private void handleException(Throwable ex) {
+            ExceptionPolicy policy = definition.getExceptionPolicy();
+            if (policy == ExceptionPolicy.LOG_AND_CONTINUE) {
+                log.warn(
+                        "Subscriber invocation failed (bean={}).",
+                        definition.getBeanName(),
+                        ex);
+                return;
+            }
+            throw ex instanceof RuntimeException ? (RuntimeException) ex : new RuntimeException(ex);
+        }
+
+        private void recordMetrics(DisruptorEvent event) {
+            if (metrics == null) {
+                return;
+            }
+            metrics.recordConsume(definition.getRing(), definition.getHandlerId());
+            long createdAt = event.getCreatedAt();
+            if (createdAt > 0) {
+                metrics.recordLatency(
+                        definition.getRing(), Math.max(0, System.currentTimeMillis() - createdAt));
+            }
+        }
+    }
+
+    private static final class DelegatingWorkHandler implements WorkHandler<DisruptorEvent> {
+        private final SubscriberDefinition definition;
+        private final WorkHandler<DisruptorEvent> delegate;
+        private final DisruptorMetrics metrics;
+
+        private DelegatingWorkHandler(
+                SubscriberDefinition definition,
+                WorkHandler<DisruptorEvent> delegate,
+                DisruptorMetrics metrics) {
+            this.definition = definition;
+            this.delegate = delegate;
+            this.metrics = metrics;
+        }
+
+        @Override
+        public void onEvent(DisruptorEvent event) {
+            if (!matchesEventType(event)) {
+                return;
+            }
+            try {
+                delegate.onEvent(event);
+                recordMetrics(event);
+            } catch (Throwable ex) {
+                handleException(ex);
+            }
+        }
+
+        private boolean matchesEventType(DisruptorEvent event) {
+            String expected = definition.getEventType();
+            if (expected == null || expected.isEmpty()) {
+                return true;
+            }
+            return expected.equals(event.getEventType());
+        }
+
+        private void handleException(Throwable ex) {
+            ExceptionPolicy policy = definition.getExceptionPolicy();
+            if (policy == ExceptionPolicy.LOG_AND_CONTINUE) {
+                log.warn(
+                        "Subscriber invocation failed (bean={}).",
+                        definition.getBeanName(),
+                        ex);
+                return;
+            }
+            throw ex instanceof RuntimeException ? (RuntimeException) ex : new RuntimeException(ex);
+        }
+
+        private void recordMetrics(DisruptorEvent event) {
+            if (metrics == null) {
+                return;
+            }
+            metrics.recordConsume(definition.getRing(), definition.getHandlerId());
+            long createdAt = event.getCreatedAt();
+            if (createdAt > 0) {
+                metrics.recordLatency(
+                        definition.getRing(), Math.max(0, System.currentTimeMillis() - createdAt));
+            }
+        }
+    }
+}

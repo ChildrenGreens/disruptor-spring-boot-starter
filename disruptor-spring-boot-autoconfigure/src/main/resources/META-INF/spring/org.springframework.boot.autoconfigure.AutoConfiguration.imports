@@ -1,0 +1,2 @@
+com.childrengreens.disruptor.autoconfigure.DisruptorAutoConfiguration
+com.childrengreens.disruptor.autoconfigure.DisruptorActuatorAutoConfiguration
