@@ -19,10 +19,10 @@ class SubscriberBeanPostProcessorTest {
 
         assertThat(registry.getDefinitions()).hasSize(1);
         SubscriberDefinition definition = registry.getDefinitions().get(0);
-        assertThat(definition.getBeanName()).isEqualTo("validSubscriber");
-        assertThat(definition.getRing()).isEqualTo("ringA");
-        assertThat(definition.getMode()).isEqualTo(Concurrency.MODE_HANDLER);
-        assertThat(definition.getMethod()).isNotNull();
+        assertThat(definition.beanName()).isEqualTo("validSubscriber");
+        assertThat(definition.ring()).isEqualTo("ringA");
+        assertThat(definition.mode()).isEqualTo(Concurrency.MODE_HANDLER);
+        assertThat(definition.method()).isNotNull();
     }
 
     @Test
@@ -35,8 +35,8 @@ class SubscriberBeanPostProcessorTest {
 
         assertThat(registry.getDefinitions()).isNotEmpty();
         assertThat(registry.getDefinitions())
-                .anyMatch(definition -> "classRing".equals(definition.getRing())
-                        && "handle".equals(definition.getMethod().getName()));
+                .anyMatch(definition -> "classRing".equals(definition.ring())
+                        && "handle".equals(definition.method().getName()));
     }
 
     @Test
@@ -60,6 +60,7 @@ class SubscriberBeanPostProcessorTest {
 
         assertThat(registry.getDefinitions()).isEmpty();
     }
+
 
     static class ValidSubscriber {
         @DisruptorSubscriber(ring = "ringA", mode = Concurrency.MODE_HANDLER)
@@ -85,4 +86,5 @@ class SubscriberBeanPostProcessorTest {
         public void handle(List<String> payloads) {
         }
     }
+
 }

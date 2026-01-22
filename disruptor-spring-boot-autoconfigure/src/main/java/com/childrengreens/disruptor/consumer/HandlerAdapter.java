@@ -89,26 +89,26 @@ public class HandlerAdapter {
     private Map<String, List<SubscriberDefinition>> groupByRing(
             SubscriberRegistry registry, Concurrency mode) {
         return registry.getDefinitions().stream()
-                .filter(def -> def.getMode() == mode)
-                .sorted(Comparator.comparingInt(SubscriberDefinition::getOrder))
-                .collect(Collectors.groupingBy(SubscriberDefinition::getRing));
+                .filter(def -> def.mode() == mode)
+                .sorted(Comparator.comparingInt(SubscriberDefinition::order))
+                .collect(Collectors.groupingBy(SubscriberDefinition::ring));
     }
 
     /**
      * Adapt a single definition to an {@link EventHandler} when possible.
      */
     public EventHandler<DisruptorEvent> adaptEventHandler(SubscriberDefinition definition) {
-        if (definition.getMethod() == null) {
-            if (definition.getBean() instanceof EventHandler) {
+        if (definition.method() == null) {
+            if (definition.bean() instanceof EventHandler) {
                 @SuppressWarnings("unchecked")
                 EventHandler<DisruptorEvent> handler =
-                        (EventHandler<DisruptorEvent>) definition.getBean();
+                        (EventHandler<DisruptorEvent>) definition.bean();
                 return new DelegatingEventHandler(definition, handler, metrics);
             }
             log.warn(
                     "Bean {} does not implement EventHandler, skip ring={}",
-                    definition.getBeanName(),
-                    definition.getRing());
+                    definition.beanName(),
+                    definition.ring());
             return null;
         }
         return new MethodEventHandler(definition, metrics);
@@ -118,23 +118,23 @@ public class HandlerAdapter {
      * Adapt a single definition to a {@link WorkHandler} when possible.
      */
     public WorkHandler<DisruptorEvent> adaptWorkHandler(SubscriberDefinition definition) {
-        if (definition.getMethod() == null) {
-            if (definition.getBean() instanceof WorkHandler) {
+        if (definition.method() == null) {
+            if (definition.bean() instanceof WorkHandler) {
                 @SuppressWarnings("unchecked")
                 WorkHandler<DisruptorEvent> handler =
-                        (WorkHandler<DisruptorEvent>) definition.getBean();
+                        (WorkHandler<DisruptorEvent>) definition.bean();
                 return new DelegatingWorkHandler(definition, handler, metrics);
             }
             log.warn(
                     "Bean {} does not implement WorkHandler, skip ring={}",
-                    definition.getBeanName(),
-                    definition.getRing());
+                    definition.beanName(),
+                    definition.ring());
             return null;
         }
-        if (definition.isBatch()) {
+        if (definition.batch()) {
             log.warn(
                     "Batch mode is not supported for worker handlers. Skip bean={}",
-                    definition.getBeanName());
+                    definition.beanName());
             return null;
         }
         return new MethodWorkHandler(definition, metrics);
@@ -152,8 +152,8 @@ public class HandlerAdapter {
 
         private MethodEventHandler(SubscriberDefinition definition, DisruptorMetrics metrics) {
             this.definition = definition;
-            this.target = definition.getBean();
-            this.method = definition.getMethod();
+            this.target = definition.bean();
+            this.method = definition.method();
             this.metrics = metrics;
         }
 
@@ -163,7 +163,7 @@ public class HandlerAdapter {
                 return;
             }
             try {
-                if (definition.isBatch()) {
+                if (definition.batch()) {
                     batchBuffer.add(event.getPayload());
                     if (shouldFlush(endOfBatch)) {
                         ReflectionUtils.invokeMethod(method, target, new ArrayList<>(batchBuffer));
@@ -179,7 +179,7 @@ public class HandlerAdapter {
         }
 
         private boolean matchesEventType(DisruptorEvent event) {
-            String expected = definition.getEventType();
+            String expected = definition.eventType();
             if (expected == null || expected.isEmpty()) {
                 return true;
             }
@@ -187,10 +187,10 @@ public class HandlerAdapter {
         }
 
         private boolean shouldFlush(boolean endOfBatch) {
-            if (!definition.isBatch()) {
+            if (!definition.batch()) {
                 return false;
             }
-            int batchSize = definition.getBatchSize();
+            int batchSize = definition.batchSize();
             if (batchSize > 0 && batchBuffer.size() >= batchSize) {
                 return true;
             }
@@ -198,11 +198,11 @@ public class HandlerAdapter {
         }
 
         private void handleException(Throwable ex) {
-            ExceptionPolicy policy = definition.getExceptionPolicy();
+            ExceptionPolicy policy = definition.exceptionPolicy();
             if (policy == ExceptionPolicy.LOG_AND_CONTINUE) {
                 log.warn(
                         "Subscriber invocation failed (bean={} method={}).",
-                        definition.getBeanName(),
+                        definition.beanName(),
                         method.getName(),
                         ex);
                 return;
@@ -214,11 +214,11 @@ public class HandlerAdapter {
             if (metrics == null) {
                 return;
             }
-            metrics.recordConsume(definition.getRing(), definition.getHandlerId());
+            metrics.recordConsume(definition.ring(), definition.getHandlerId());
             long createdAt = event.getCreatedAt();
             if (createdAt > 0) {
                 metrics.recordLatency(
-                        definition.getRing(), Math.max(0, System.currentTimeMillis() - createdAt));
+                        definition.ring(), Math.max(0, System.currentTimeMillis() - createdAt));
             }
         }
     }
@@ -234,8 +234,8 @@ public class HandlerAdapter {
 
         private MethodWorkHandler(SubscriberDefinition definition, DisruptorMetrics metrics) {
             this.definition = definition;
-            this.target = definition.getBean();
-            this.method = definition.getMethod();
+            this.target = definition.bean();
+            this.method = definition.method();
             this.metrics = metrics;
         }
 
@@ -253,7 +253,7 @@ public class HandlerAdapter {
         }
 
         private boolean matchesEventType(DisruptorEvent event) {
-            String expected = definition.getEventType();
+            String expected = definition.eventType();
             if (expected == null || expected.isEmpty()) {
                 return true;
             }
@@ -261,11 +261,11 @@ public class HandlerAdapter {
         }
 
         private void handleException(Throwable ex) {
-            ExceptionPolicy policy = definition.getExceptionPolicy();
+            ExceptionPolicy policy = definition.exceptionPolicy();
             if (policy == ExceptionPolicy.LOG_AND_CONTINUE) {
                 log.warn(
                         "Subscriber invocation failed (bean={} method={}).",
-                        definition.getBeanName(),
+                        definition.beanName(),
                         method.getName(),
                         ex);
                 return;
@@ -277,11 +277,11 @@ public class HandlerAdapter {
             if (metrics == null) {
                 return;
             }
-            metrics.recordConsume(definition.getRing(), definition.getHandlerId());
+            metrics.recordConsume(definition.ring(), definition.getHandlerId());
             long createdAt = event.getCreatedAt();
             if (createdAt > 0) {
                 metrics.recordLatency(
-                        definition.getRing(), Math.max(0, System.currentTimeMillis() - createdAt));
+                        definition.ring(), Math.max(0, System.currentTimeMillis() - createdAt));
             }
         }
     }
@@ -314,7 +314,7 @@ public class HandlerAdapter {
         }
 
         private boolean matchesEventType(DisruptorEvent event) {
-            String expected = definition.getEventType();
+            String expected = definition.eventType();
             if (expected == null || expected.isEmpty()) {
                 return true;
             }
@@ -322,11 +322,11 @@ public class HandlerAdapter {
         }
 
         private void handleException(Throwable ex) {
-            ExceptionPolicy policy = definition.getExceptionPolicy();
+            ExceptionPolicy policy = definition.exceptionPolicy();
             if (policy == ExceptionPolicy.LOG_AND_CONTINUE) {
                 log.warn(
                         "Subscriber invocation failed (bean={}).",
-                        definition.getBeanName(),
+                        definition.beanName(),
                         ex);
                 return;
             }
@@ -337,11 +337,11 @@ public class HandlerAdapter {
             if (metrics == null) {
                 return;
             }
-            metrics.recordConsume(definition.getRing(), definition.getHandlerId());
+            metrics.recordConsume(definition.ring(), definition.getHandlerId());
             long createdAt = event.getCreatedAt();
             if (createdAt > 0) {
                 metrics.recordLatency(
-                        definition.getRing(), Math.max(0, System.currentTimeMillis() - createdAt));
+                        definition.ring(), Math.max(0, System.currentTimeMillis() - createdAt));
             }
         }
     }
@@ -374,7 +374,7 @@ public class HandlerAdapter {
         }
 
         private boolean matchesEventType(DisruptorEvent event) {
-            String expected = definition.getEventType();
+            String expected = definition.eventType();
             if (expected == null || expected.isEmpty()) {
                 return true;
             }
@@ -382,11 +382,11 @@ public class HandlerAdapter {
         }
 
         private void handleException(Throwable ex) {
-            ExceptionPolicy policy = definition.getExceptionPolicy();
+            ExceptionPolicy policy = definition.exceptionPolicy();
             if (policy == ExceptionPolicy.LOG_AND_CONTINUE) {
                 log.warn(
                         "Subscriber invocation failed (bean={}).",
-                        definition.getBeanName(),
+                        definition.beanName(),
                         ex);
                 return;
             }
@@ -397,11 +397,11 @@ public class HandlerAdapter {
             if (metrics == null) {
                 return;
             }
-            metrics.recordConsume(definition.getRing(), definition.getHandlerId());
+            metrics.recordConsume(definition.ring(), definition.getHandlerId());
             long createdAt = event.getCreatedAt();
             if (createdAt > 0) {
                 metrics.recordLatency(
-                        definition.getRing(), Math.max(0, System.currentTimeMillis() - createdAt));
+                        definition.ring(), Math.max(0, System.currentTimeMillis() - createdAt));
             }
         }
     }

@@ -1,7 +1,6 @@
 package com.childrengreens.disruptor.consumer;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -15,6 +14,6 @@ public class SubscriberRegistry {
     }
 
     public synchronized List<SubscriberDefinition> getDefinitions() {
-        return Collections.unmodifiableList(new ArrayList<>(definitions));
+        return List.copyOf(definitions);
     }
 }

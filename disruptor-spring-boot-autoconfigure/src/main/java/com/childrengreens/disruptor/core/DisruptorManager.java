@@ -188,7 +188,7 @@ public class DisruptorManager {
             rings = defaults;
         }
         for (String ringName : registry.getDefinitions().stream()
-                .map(SubscriberDefinition::getRing)
+                .map(SubscriberDefinition::ring)
                 .distinct()
                 .toList()) {
             rings.putIfAbsent(ringName, new RingProperties());
@@ -203,7 +203,7 @@ public class DisruptorManager {
         Map<String, Map<Integer, List<EventHandler<DisruptorEvent>>>> result =
                 new LinkedHashMap<>();
         for (SubscriberDefinition definition : registry.getDefinitions()) {
-            if (definition.getMode()
+            if (definition.mode()
                     != com.childrengreens.disruptor.annotation.Concurrency.MODE_HANDLER) {
                 continue;
             }
@@ -212,8 +212,8 @@ public class DisruptorManager {
                 continue;
             }
             result
-                    .computeIfAbsent(definition.getRing(), key -> new LinkedHashMap<>())
-                    .computeIfAbsent(definition.getOrder(), key -> new java.util.ArrayList<>())
+                    .computeIfAbsent(definition.ring(), key -> new LinkedHashMap<>())
+                    .computeIfAbsent(definition.order(), key -> new java.util.ArrayList<>())
                     .add(handler);
         }
         for (Map<Integer, List<EventHandler<DisruptorEvent>>> ordered : result.values()) {
