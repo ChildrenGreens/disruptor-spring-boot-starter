@@ -15,11 +15,14 @@
  */
 package com.childrengreens.disruptor.properties;
 
+import com.lmax.disruptor.dsl.ProducerType;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
+
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -49,7 +52,12 @@ class DisruptorPropertiesTest {
                 .withPropertyValues(
                         "spring.disruptor.rings.fast.buffer-size=2048",
                         "spring.disruptor.rings.fast.producer-type=SINGLE",
-                        "spring.disruptor.rings.fast.wait-strategy=BUSY_SPIN",
+                        "spring.disruptor.rings.fast.wait-strategy=PHASED_BACKOFF",
+                        "spring.disruptor.rings.fast.wait-strategy-config.timeout-blocking-timeout=5ms",
+                        "spring.disruptor.rings.fast.wait-strategy-config.lite-timeout-blocking-timeout=7ms",
+                        "spring.disruptor.rings.fast.wait-strategy-config.phased-backoff-spin-timeout=2us",
+                        "spring.disruptor.rings.fast.wait-strategy-config.phased-backoff-yield-timeout=3us",
+                        "spring.disruptor.rings.fast.wait-strategy-config.phased-backoff-fallback=BLOCKING",
                         "spring.disruptor.rings.fast.exception-handler=LOG_AND_HALT")
                 .run(context -> {
                     DisruptorProperties properties = context.getBean(DisruptorProperties.class);
@@ -57,7 +65,17 @@ class DisruptorPropertiesTest {
                     assertThat(ring).isNotNull();
                     assertThat(ring.getBufferSize()).isEqualTo(2048);
                     assertThat(ring.getProducerType()).isEqualTo(ProducerType.SINGLE);
-                    assertThat(ring.getWaitStrategy()).isEqualTo(WaitStrategyType.BUSY_SPIN);
+                    assertThat(ring.getWaitStrategy()).isEqualTo(WaitStrategyType.PHASED_BACKOFF);
+                    assertThat(ring.getWaitStrategyConfig().getTimeoutBlockingTimeout())
+                            .isEqualTo(Duration.ofMillis(5));
+                    assertThat(ring.getWaitStrategyConfig().getLiteTimeoutBlockingTimeout())
+                            .isEqualTo(Duration.ofMillis(7));
+                    assertThat(ring.getWaitStrategyConfig().getPhasedBackoffSpinTimeout())
+                            .isEqualTo(Duration.ofNanos(2000));
+                    assertThat(ring.getWaitStrategyConfig().getPhasedBackoffYieldTimeout())
+                            .isEqualTo(Duration.ofNanos(3000));
+                    assertThat(ring.getWaitStrategyConfig().getPhasedBackoffFallback())
+                            .isEqualTo(WaitStrategyType.BLOCKING);
                     assertThat(ring.getExceptionHandler()).isEqualTo(ExceptionHandlerType.LOG_AND_HALT);
                 });
     }

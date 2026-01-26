@@ -15,13 +15,13 @@
  */
 package com.childrengreens.disruptor.core;
 
+import com.childrengreens.disruptor.annotation.Concurrency;
 import com.childrengreens.disruptor.consumer.ExceptionHandlerSupport;
 import com.childrengreens.disruptor.consumer.HandlerAdapter;
 import com.childrengreens.disruptor.consumer.SubscriberDefinition;
 import com.childrengreens.disruptor.consumer.SubscriberRegistry;
 import com.childrengreens.disruptor.consumer.WorkerPoolSupport;
 import com.childrengreens.disruptor.properties.DisruptorProperties;
-import com.childrengreens.disruptor.properties.ProducerType;
 import com.childrengreens.disruptor.properties.RingProperties;
 import com.childrengreens.disruptor.properties.ShutdownStrategy;
 import com.childrengreens.disruptor.properties.WaitStrategyType;
@@ -29,9 +29,12 @@ import com.lmax.disruptor.BlockingWaitStrategy;
 import com.lmax.disruptor.BusySpinWaitStrategy;
 import com.lmax.disruptor.EventHandler;
 import com.lmax.disruptor.ExceptionHandler;
+import com.lmax.disruptor.LiteBlockingWaitStrategy;
+import com.lmax.disruptor.LiteTimeoutBlockingWaitStrategy;
 import com.lmax.disruptor.PhasedBackoffWaitStrategy;
 import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.SleepingWaitStrategy;
+import com.lmax.disruptor.TimeoutBlockingWaitStrategy;
 import com.lmax.disruptor.WaitStrategy;
 import com.lmax.disruptor.WorkHandler;
 import com.lmax.disruptor.YieldingWaitStrategy;
@@ -39,12 +42,10 @@ import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.EventHandlerGroup;
 
 import java.time.Duration;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -85,7 +86,7 @@ public class DisruptorManager {
      * Build and start all configured Disruptor rings.
      */
     public synchronized void start() {
-        if (!disruptors.isEmpty()) {
+        if (running) {
             return;
         }
         Map<String, RingProperties> rings = resolveRings();
@@ -96,54 +97,70 @@ public class DisruptorManager {
         Map<String, List<WorkHandler<DisruptorEvent>>> workHandlers =
                 handlerAdapter.adaptWorkHandlers(registry);
 
-        for (Map.Entry<String, RingProperties> entry : rings.entrySet()) {
-            String ringName = entry.getKey();
-            RingProperties ringProperties = entry.getValue();
-            Disruptor<DisruptorEvent> disruptor = buildDisruptor(ringName, ringProperties);
-            ExceptionHandler<DisruptorEvent> exceptionHandler =
-                    exceptionHandlerSupport.create(ringProperties.getExceptionHandler(), ringName);
-            disruptor.setDefaultExceptionHandler(exceptionHandler);
+        Map<String, Disruptor<DisruptorEvent>> started = new LinkedHashMap<>();
+        try {
+            for (Map.Entry<String, RingProperties> entry : rings.entrySet()) {
+                String ringName = entry.getKey();
+                RingProperties ringProperties = entry.getValue();
+                Disruptor<DisruptorEvent> disruptor = buildDisruptor(ringName, ringProperties);
+                ExceptionHandler<DisruptorEvent> exceptionHandler =
+                        exceptionHandlerSupport.create(ringProperties.getExceptionHandler(), ringName);
+                disruptor.setDefaultExceptionHandler(exceptionHandler);
 
-            Map<Integer, List<EventHandler<DisruptorEvent>>> ringEventHandlers =
-                    orderedHandlers.get(ringName);
-            List<WorkHandler<DisruptorEvent>> ringWorkHandlers = workHandlers.get(ringName);
-            if (ringEventHandlers != null && !ringEventHandlers.isEmpty()) {
-                EventHandlerGroup<DisruptorEvent> group = null;
-                for (Map.Entry<Integer, List<EventHandler<DisruptorEvent>>> orderedGroup :
-                        ringEventHandlers.entrySet()) {
-                    @SuppressWarnings("unchecked")
-                    EventHandler<DisruptorEvent>[] handlers =
-                            orderedGroup.getValue().toArray(new EventHandler[0]);
-                    if (group == null) {
-                        group = disruptor.handleEventsWith(handlers);
-                    } else {
-                        group = group.then(handlers);
+                Map<Integer, List<EventHandler<DisruptorEvent>>> ringEventHandlers =
+                        orderedHandlers.get(ringName);
+                List<WorkHandler<DisruptorEvent>> ringWorkHandlers = workHandlers.get(ringName);
+                if (ringEventHandlers != null && !ringEventHandlers.isEmpty()) {
+                    EventHandlerGroup<DisruptorEvent> group = null;
+                    for (Map.Entry<Integer, List<EventHandler<DisruptorEvent>>> orderedGroup :
+                            ringEventHandlers.entrySet()) {
+                        @SuppressWarnings("unchecked")
+                        EventHandler<DisruptorEvent>[] handlers =
+                                orderedGroup.getValue().toArray(new EventHandler[0]);
+                        if (group == null) {
+                            group = disruptor.handleEventsWith(handlers);
+                        } else {
+                            group = group.then(handlers);
+                        }
                     }
                 }
-            }
 
-            if (ringWorkHandlers != null && !ringWorkHandlers.isEmpty()) {
-                if (ringEventHandlers != null && !ringEventHandlers.isEmpty()) {
-                    log.warn(
-                            "Ring {} has both handler and worker subscribers. WorkerPool will run in parallel.",
-                            ringName);
+                if (ringWorkHandlers != null && !ringWorkHandlers.isEmpty()) {
+                    if (ringEventHandlers != null && !ringEventHandlers.isEmpty()) {
+                        log.warn(
+                                "Ring {} has both handler and worker subscribers. WorkerPool will run in parallel.",
+                                ringName);
+                    }
+                    @SuppressWarnings("unchecked")
+                    WorkHandler<DisruptorEvent>[] handlers =
+                            ringWorkHandlers.toArray(new WorkHandler[0]);
+                    workerPoolSupport.handleWithWorkerPool(disruptor, handlers);
                 }
-                @SuppressWarnings("unchecked")
-                WorkHandler<DisruptorEvent>[] handlers =
-                        ringWorkHandlers.toArray(new WorkHandler[0]);
-                workerPoolSupport.handleWithWorkerPool(disruptor, handlers);
-            }
 
-            if ((ringEventHandlers == null || ringEventHandlers.isEmpty())
-                    && (ringWorkHandlers == null || ringWorkHandlers.isEmpty())) {
-                log.info("Ring {} has no subscribers registered.", ringName);
-            }
+                if ((ringEventHandlers == null || ringEventHandlers.isEmpty())
+                        && (ringWorkHandlers == null || ringWorkHandlers.isEmpty())) {
+                    log.info("Ring {} has no subscribers registered.", ringName);
+                }
 
-            disruptor.start();
-            disruptors.put(ringName, disruptor);
-            ringBuffers.put(ringName, disruptor.getRingBuffer());
+                disruptor.start();
+                disruptors.put(ringName, disruptor);
+                ringBuffers.put(ringName, disruptor.getRingBuffer());
+                started.put(ringName, disruptor);
+            }
+            running = true;
+        } catch (Exception ex) {
+            for (Disruptor<DisruptorEvent> disruptor : started.values()) {
+                try {
+                    disruptor.halt();
+                } catch (Exception haltEx) {
+                    log.warn("Failed to halt ring during startup rollback.", haltEx);
+                }
+            }
+            disruptors.clear();
+            ringBuffers.clear();
+            running = false;
+            throw ex;
         }
-        running = true;
     }
 
     /**
@@ -153,22 +170,29 @@ public class DisruptorManager {
         if (!running) {
             return;
         }
-        for (Map.Entry<String, Disruptor<DisruptorEvent>> entry : disruptors.entrySet()) {
-            Disruptor<DisruptorEvent> disruptor = entry.getValue();
-            try {
-                if (strategy == ShutdownStrategy.HALT) {
-                    disruptor.halt();
-                } else {
-                    disruptor.shutdown(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        try {
+            for (Map.Entry<String, Disruptor<DisruptorEvent>> entry : disruptors.entrySet()) {
+                Disruptor<DisruptorEvent> disruptor = entry.getValue();
+                try {
+                    if (strategy == ShutdownStrategy.HALT) {
+                        disruptor.halt();
+                    } else {
+                        disruptor.shutdown(timeout.toMillis(), TimeUnit.MILLISECONDS);
+                    }
+                } catch (Exception ex) {
+                    log.warn("Failed to shutdown ring {} gracefully, forcing halt.", entry.getKey(), ex);
+                    try {
+                        disruptor.halt();
+                    } catch (Exception haltEx) {
+                        log.error("Failed to halt ring {} after shutdown failure.", entry.getKey(), haltEx);
+                    }
                 }
-            } catch (Exception ex) {
-                log.warn("Failed to shutdown ring {} gracefully, forcing halt.", entry.getKey(), ex);
-                disruptor.halt();
             }
+        } finally {
+            disruptors.clear();
+            ringBuffers.clear();
+            running = false;
         }
-        disruptors.clear();
-        ringBuffers.clear();
-        running = false;
     }
 
     /**
@@ -192,16 +216,20 @@ public class DisruptorManager {
         return ringBuffers.get(name);
     }
 
+
+    /**
+     * Return resolved ring names, including those discovered from subscribers.
+     */
+    public List<String> getResolvedRingNames() {
+        return List.copyOf(resolveRings().keySet());
+    }
+
     /**
      * Resolve ring configurations, including defaults and rings discovered by subscribers.
      */
     private Map<String, RingProperties> resolveRings() {
         Map<String, RingProperties> rings = properties.getRings();
-        if (rings == null || rings.isEmpty()) {
-            Map<String, RingProperties> defaults = new LinkedHashMap<>();
-            defaults.put("default", new RingProperties());
-            rings = defaults;
-        }
+        rings = rings == null ? new LinkedHashMap<>() : new LinkedHashMap<>(rings);
         for (String ringName : registry.getDefinitions().stream()
                 .map(SubscriberDefinition::ring)
                 .distinct()
@@ -219,7 +247,7 @@ public class DisruptorManager {
                 new LinkedHashMap<>();
         for (SubscriberDefinition definition : registry.getDefinitions()) {
             if (definition.mode()
-                    != com.childrengreens.disruptor.annotation.Concurrency.MODE_HANDLER) {
+                    != Concurrency.MODE_HANDLER) {
                 continue;
             }
             EventHandler<DisruptorEvent> handler = handlerAdapter.adaptEventHandler(definition);
@@ -227,22 +255,9 @@ public class DisruptorManager {
                 continue;
             }
             result
-                    .computeIfAbsent(definition.ring(), key -> new LinkedHashMap<>())
-                    .computeIfAbsent(definition.order(), key -> new java.util.ArrayList<>())
+                    .computeIfAbsent(definition.ring(), key -> new TreeMap<>())
+                    .computeIfAbsent(definition.order(), key -> new ArrayList<>())
                     .add(handler);
-        }
-        for (Map<Integer, List<EventHandler<DisruptorEvent>>> ordered : result.values()) {
-            Map<Integer, List<EventHandler<DisruptorEvent>>> sorted =
-                    ordered.entrySet().stream()
-                            .sorted(Map.Entry.comparingByKey())
-                            .collect(
-                                    java.util.stream.Collectors.toMap(
-                                            Map.Entry::getKey,
-                                            Map.Entry::getValue,
-                                            (a, b) -> a,
-                                            LinkedHashMap::new));
-            ordered.clear();
-            ordered.putAll(sorted);
         }
         return result;
     }
@@ -273,45 +288,86 @@ public class DisruptorManager {
                 new DisruptorEventFactory(),
                 props.getBufferSize(),
                 threadFactory,
-                toProducerType(props.getProducerType()),
-                toWaitStrategy(props.getWaitStrategy()));
-    }
-
-    /**
-     * Map configured producer type to Disruptor producer type.
-     */
-    private com.lmax.disruptor.dsl.ProducerType toProducerType(ProducerType producerType) {
-        return producerType == ProducerType.SINGLE
-                ? com.lmax.disruptor.dsl.ProducerType.SINGLE
-                : com.lmax.disruptor.dsl.ProducerType.MULTI;
+                props.getProducerType(),
+                toWaitStrategy(props.getWaitStrategy(), props));
     }
 
     /**
      * Map configured wait strategy to Disruptor wait strategy.
      */
-    private WaitStrategy toWaitStrategy(WaitStrategyType waitStrategyType) {
+    private WaitStrategy toWaitStrategy(WaitStrategyType waitStrategyType, RingProperties props) {
+        RingProperties.WaitStrategyConfig config =
+                props.getWaitStrategyConfig() == null
+                        ? new RingProperties.WaitStrategyConfig()
+                        : props.getWaitStrategyConfig();
         return switch (waitStrategyType) {
+            case TIMEOUT_BLOCKING -> new TimeoutBlockingWaitStrategy(
+                    toTimeout(config.getTimeoutBlockingTimeout(), Duration.ofMillis(1)),
+                    TimeUnit.NANOSECONDS);
+            case LITE_BLOCKING -> new LiteBlockingWaitStrategy();
+            case LITE_TIMEOUT_BLOCKING -> new LiteTimeoutBlockingWaitStrategy(
+                    toTimeout(config.getLiteTimeoutBlockingTimeout(), Duration.ofMillis(1)),
+                    TimeUnit.NANOSECONDS);
             case SLEEPING -> new SleepingWaitStrategy();
             case YIELDING -> new YieldingWaitStrategy();
             case BUSY_SPIN -> new BusySpinWaitStrategy();
-            case PHASED_BACKOFF -> new PhasedBackoffWaitStrategy(
-                    1, 1000, TimeUnit.MICROSECONDS, new YieldingWaitStrategy());
+            case PHASED_BACKOFF -> {
+                Duration spinTimeout = config.getPhasedBackoffSpinTimeout();
+                Duration yieldTimeout = config.getPhasedBackoffYieldTimeout();
+                WaitStrategy fallback =
+                        toFallbackWaitStrategy(config.getPhasedBackoffFallback(), config);
+                yield new PhasedBackoffWaitStrategy(
+                        toTimeout(spinTimeout, Duration.ofNanos(1000)),
+                        toTimeout(yieldTimeout, Duration.ofNanos(1_000_000)),
+                        TimeUnit.NANOSECONDS,
+                        fallback);
+            }
             default -> new BlockingWaitStrategy();
         };
     }
 
+    private WaitStrategy toFallbackWaitStrategy(
+            WaitStrategyType waitStrategyType, RingProperties.WaitStrategyConfig config) {
+        WaitStrategyType type = waitStrategyType == null ? WaitStrategyType.YIELDING : waitStrategyType;
+        if (type == WaitStrategyType.PHASED_BACKOFF) {
+            log.warn("PHASED_BACKOFF cannot be used as a phasedBackoffFallback. Using YIELDING.");
+            type = WaitStrategyType.YIELDING;
+        }
+        return switch (type) {
+            case TIMEOUT_BLOCKING -> new TimeoutBlockingWaitStrategy(
+                    toTimeout(config.getTimeoutBlockingTimeout(), Duration.ofMillis(1)),
+                    TimeUnit.NANOSECONDS);
+            case LITE_BLOCKING -> new LiteBlockingWaitStrategy();
+            case LITE_TIMEOUT_BLOCKING -> new LiteTimeoutBlockingWaitStrategy(
+                    toTimeout(config.getLiteTimeoutBlockingTimeout(), Duration.ofMillis(1)),
+                    TimeUnit.NANOSECONDS);
+            case SLEEPING -> new SleepingWaitStrategy();
+            case BUSY_SPIN -> new BusySpinWaitStrategy();
+            case BLOCKING -> new BlockingWaitStrategy();
+            default -> new YieldingWaitStrategy();
+        };
+    }
+
+    private long toTimeout(Duration value, Duration defaultValue) {
+        Duration effective = value;
+        if (effective == null || effective.isZero() || effective.isNegative()) {
+            effective = defaultValue;
+        }
+        return effective.toNanos();
+    }
+
     private static final class NamedThreadFactory implements ThreadFactory {
         private final String prefix;
-        private int index = 1;
+        private final AtomicInteger index = new AtomicInteger(1);
 
         private NamedThreadFactory(String prefix) {
             this.prefix = prefix;
         }
 
         @Override
-        public synchronized Thread newThread(@NonNull Runnable r) {
+        public Thread newThread(@NonNull Runnable r) {
             Thread thread = new Thread(r);
-            thread.setName(prefix + index++);
+            thread.setName(prefix + index.getAndIncrement());
             thread.setDaemon(true);
             return thread;
         }

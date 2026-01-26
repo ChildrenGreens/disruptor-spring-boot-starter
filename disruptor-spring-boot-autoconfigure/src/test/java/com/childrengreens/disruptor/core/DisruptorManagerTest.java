@@ -25,7 +25,17 @@ import com.childrengreens.disruptor.consumer.WorkerPoolSupport;
 import com.childrengreens.disruptor.properties.DisruptorProperties;
 import com.childrengreens.disruptor.properties.RingProperties;
 import com.childrengreens.disruptor.properties.ShutdownStrategy;
+import com.childrengreens.disruptor.properties.WaitStrategyType;
+import com.lmax.disruptor.BlockingWaitStrategy;
+import com.lmax.disruptor.BusySpinWaitStrategy;
 import com.lmax.disruptor.EventHandler;
+import com.lmax.disruptor.LiteBlockingWaitStrategy;
+import com.lmax.disruptor.LiteTimeoutBlockingWaitStrategy;
+import com.lmax.disruptor.PhasedBackoffWaitStrategy;
+import com.lmax.disruptor.SleepingWaitStrategy;
+import com.lmax.disruptor.TimeoutBlockingWaitStrategy;
+import com.lmax.disruptor.WaitStrategy;
+import com.lmax.disruptor.YieldingWaitStrategy;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -40,7 +50,7 @@ class DisruptorManagerTest {
         DisruptorManager manager = newManager(new DisruptorProperties(), new SubscriberRegistry());
         manager.start();
         assertThat(manager.isRunning()).isTrue();
-        assertThat(manager.getRingBuffer("default")).isNotNull();
+        assertThat(manager.getRingBuffer("default")).isNull();
         manager.stop(Duration.ofMillis(100), ShutdownStrategy.HALT);
     }
 
@@ -64,7 +74,6 @@ class DisruptorManagerTest {
         DisruptorManager manager = newManager(properties, registry);
         manager.start();
 
-        assertThat(manager.getRingBuffer("default")).isNotNull();
         assertThat(manager.getRingBuffer("alpha")).isNotNull();
         manager.stop(Duration.ofMillis(100), ShutdownStrategy.HALT);
     }
@@ -89,6 +98,62 @@ class DisruptorManagerTest {
         assertThat(manager.isRunning()).isFalse();
     }
 
+    @Test
+    void resolvesWaitStrategyVariants() throws Exception {
+        DisruptorManager manager = newManager(new DisruptorProperties(), new SubscriberRegistry());
+        RingProperties ring = new RingProperties();
+        RingProperties.WaitStrategyConfig config = new RingProperties.WaitStrategyConfig();
+        ring.setWaitStrategyConfig(config);
+
+        assertThat(invokeWaitStrategy(manager, WaitStrategyType.BLOCKING, ring))
+                .isInstanceOf(BlockingWaitStrategy.class);
+        assertThat(invokeWaitStrategy(manager, WaitStrategyType.TIMEOUT_BLOCKING, ring))
+                .isInstanceOf(TimeoutBlockingWaitStrategy.class);
+        assertThat(invokeWaitStrategy(manager, WaitStrategyType.LITE_BLOCKING, ring))
+                .isInstanceOf(LiteBlockingWaitStrategy.class);
+        assertThat(invokeWaitStrategy(manager, WaitStrategyType.LITE_TIMEOUT_BLOCKING, ring))
+                .isInstanceOf(LiteTimeoutBlockingWaitStrategy.class);
+        assertThat(invokeWaitStrategy(manager, WaitStrategyType.SLEEPING, ring))
+                .isInstanceOf(SleepingWaitStrategy.class);
+        assertThat(invokeWaitStrategy(manager, WaitStrategyType.YIELDING, ring))
+                .isInstanceOf(YieldingWaitStrategy.class);
+        assertThat(invokeWaitStrategy(manager, WaitStrategyType.BUSY_SPIN, ring))
+                .isInstanceOf(BusySpinWaitStrategy.class);
+        assertThat(invokeWaitStrategy(manager, WaitStrategyType.PHASED_BACKOFF, ring))
+                .isInstanceOf(PhasedBackoffWaitStrategy.class);
+    }
+
+    @Test
+    void resolvesFallbackWaitStrategyVariants() throws Exception {
+        DisruptorManager manager = newManager(new DisruptorProperties(), new SubscriberRegistry());
+        RingProperties.WaitStrategyConfig config = new RingProperties.WaitStrategyConfig();
+
+        assertThat(invokeFallbackWaitStrategy(manager, null, config))
+                .isInstanceOf(YieldingWaitStrategy.class);
+        assertThat(invokeFallbackWaitStrategy(manager, WaitStrategyType.PHASED_BACKOFF, config))
+                .isInstanceOf(YieldingWaitStrategy.class);
+        assertThat(invokeFallbackWaitStrategy(manager, WaitStrategyType.BLOCKING, config))
+                .isInstanceOf(BlockingWaitStrategy.class);
+        assertThat(invokeFallbackWaitStrategy(manager, WaitStrategyType.SLEEPING, config))
+                .isInstanceOf(SleepingWaitStrategy.class);
+    }
+
+    @Test
+    void resolvesTimeoutFallbacks() throws Exception {
+        DisruptorManager manager = newManager(new DisruptorProperties(), new SubscriberRegistry());
+        long defaultNanos = (long) invokeToTimeout(manager, null, Duration.ofMillis(5));
+        assertThat(defaultNanos).isEqualTo(Duration.ofMillis(5).toNanos());
+
+        long zeroNanos = (long) invokeToTimeout(manager, Duration.ZERO, Duration.ofMillis(3));
+        assertThat(zeroNanos).isEqualTo(Duration.ofMillis(3).toNanos());
+
+        long negativeNanos = (long) invokeToTimeout(manager, Duration.ofSeconds(-1), Duration.ofMillis(2));
+        assertThat(negativeNanos).isEqualTo(Duration.ofMillis(2).toNanos());
+
+        long valueNanos = (long) invokeToTimeout(manager, Duration.ofNanos(7), Duration.ofMillis(1));
+        assertThat(valueNanos).isEqualTo(7L);
+    }
+
     private DisruptorManager newManager(
             DisruptorProperties properties, SubscriberRegistry registry) {
         HandlerAdapter handlerAdapter = new HandlerAdapter(new DisruptorMetrics());
@@ -102,5 +167,31 @@ class DisruptorManagerTest {
         @Override
         public void onEvent(DisruptorEvent event, long sequence, boolean endOfBatch) {
         }
+    }
+
+    private WaitStrategy invokeWaitStrategy(
+            DisruptorManager manager, WaitStrategyType type, RingProperties ring) throws Exception {
+        java.lang.reflect.Method method = DisruptorManager.class.getDeclaredMethod(
+                "toWaitStrategy", WaitStrategyType.class, RingProperties.class);
+        method.setAccessible(true);
+        return (WaitStrategy) method.invoke(manager, type, ring);
+    }
+
+    private WaitStrategy invokeFallbackWaitStrategy(
+            DisruptorManager manager,
+            WaitStrategyType type,
+            RingProperties.WaitStrategyConfig config) throws Exception {
+        java.lang.reflect.Method method = DisruptorManager.class.getDeclaredMethod(
+                "toFallbackWaitStrategy", WaitStrategyType.class, RingProperties.WaitStrategyConfig.class);
+        method.setAccessible(true);
+        return (WaitStrategy) method.invoke(manager, type, config);
+    }
+
+    private Object invokeToTimeout(DisruptorManager manager, Duration value, Duration defaultValue)
+            throws Exception {
+        java.lang.reflect.Method method = DisruptorManager.class.getDeclaredMethod(
+                "toTimeout", Duration.class, Duration.class);
+        method.setAccessible(true);
+        return method.invoke(manager, value, defaultValue);
     }
 }

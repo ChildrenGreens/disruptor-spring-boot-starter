@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
@@ -34,9 +35,11 @@ class DisruptorLifecycleTest {
         properties.setShutdownStrategy(ShutdownStrategy.HALT);
 
         DisruptorLifecycle lifecycle = new DisruptorLifecycle(manager, properties);
+        when(manager.isRunning()).thenReturn(true);
         lifecycle.start();
         assertThat(lifecycle.isRunning()).isTrue();
 
+        when(manager.isRunning()).thenReturn(false);
         lifecycle.stop();
         assertThat(lifecycle.isRunning()).isFalse();
         verify(manager).start();

@@ -19,7 +19,6 @@ import com.childrengreens.disruptor.core.DisruptorManager;
 import com.childrengreens.disruptor.core.DisruptorMetrics;
 import com.childrengreens.disruptor.metrics.DisruptorEndpoint;
 import com.childrengreens.disruptor.metrics.DisruptorMeterBinder;
-import com.childrengreens.disruptor.properties.DisruptorProperties;
 
 import io.micrometer.core.instrument.MeterRegistry;
 
@@ -45,7 +44,7 @@ public class DisruptorActuatorAutoConfiguration {
     @Bean
     @ConditionalOnClass(MeterRegistry.class)
     public DisruptorMeterBinder disruptorMeterBinder(
-            DisruptorManager manager, DisruptorMetrics metrics, DisruptorProperties properties) {
-        return new DisruptorMeterBinder(manager, metrics, properties);
+            DisruptorManager manager, DisruptorMetrics metrics) {
+        return new DisruptorMeterBinder(manager, metrics);
     }
 }

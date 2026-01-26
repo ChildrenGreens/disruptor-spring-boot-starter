@@ -19,7 +19,6 @@ import com.childrengreens.disruptor.core.DisruptorManager;
 import com.childrengreens.disruptor.core.DisruptorMetrics;
 import com.childrengreens.disruptor.metrics.DisruptorEndpoint;
 import com.childrengreens.disruptor.metrics.DisruptorMeterBinder;
-import com.childrengreens.disruptor.properties.DisruptorProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -31,8 +30,7 @@ class DisruptorActuatorAutoConfigurationTest {
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(DisruptorActuatorAutoConfiguration.class))
             .withBean(DisruptorManager.class, () -> mock(DisruptorManager.class))
-            .withBean(DisruptorMetrics.class, DisruptorMetrics::new)
-            .withBean(DisruptorProperties.class, DisruptorProperties::new);
+            .withBean(DisruptorMetrics.class, DisruptorMetrics::new);
 
     @Test
     void autoConfigurationCreatesEndpointAndMeterBinder() {

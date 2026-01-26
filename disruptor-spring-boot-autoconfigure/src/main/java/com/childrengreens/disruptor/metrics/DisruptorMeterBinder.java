@@ -18,7 +18,6 @@ package com.childrengreens.disruptor.metrics;
 import com.childrengreens.disruptor.core.DisruptorEvent;
 import com.childrengreens.disruptor.core.DisruptorManager;
 import com.childrengreens.disruptor.core.DisruptorMetrics;
-import com.childrengreens.disruptor.properties.DisruptorProperties;
 import com.lmax.disruptor.RingBuffer;
 
 import io.micrometer.core.instrument.Gauge;
@@ -36,13 +35,10 @@ import org.springframework.lang.NonNull;
 public class DisruptorMeterBinder implements MeterBinder {
     private final DisruptorManager manager;
     private final DisruptorMetrics metrics;
-    private final DisruptorProperties properties;
 
-    public DisruptorMeterBinder(
-            DisruptorManager manager, DisruptorMetrics metrics, DisruptorProperties properties) {
+    public DisruptorMeterBinder(DisruptorManager manager, DisruptorMetrics metrics) {
         this.manager = manager;
         this.metrics = metrics;
-        this.properties = properties;
     }
 
     /**
@@ -84,10 +80,7 @@ public class DisruptorMeterBinder implements MeterBinder {
     }
 
     private List<String> resolveRings() {
-        if (properties.getRings() == null || properties.getRings().isEmpty()) {
-            return List.of("default");
-        }
-        return List.copyOf(properties.getRings().keySet());
+        return manager.getResolvedRingNames();
     }
 
     private double remainingCapacity(String ring) {

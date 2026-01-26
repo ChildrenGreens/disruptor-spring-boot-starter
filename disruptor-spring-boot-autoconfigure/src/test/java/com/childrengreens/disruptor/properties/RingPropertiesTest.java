@@ -15,7 +15,10 @@
  */
 package com.childrengreens.disruptor.properties;
 
+import com.lmax.disruptor.dsl.ProducerType;
 import org.junit.jupiter.api.Test;
+
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -27,5 +30,16 @@ class RingPropertiesTest {
         assertThat(properties.getProducerType()).isEqualTo(ProducerType.MULTI);
         assertThat(properties.getWaitStrategy()).isEqualTo(WaitStrategyType.BLOCKING);
         assertThat(properties.getExceptionHandler()).isEqualTo(ExceptionHandlerType.LOG_AND_CONTINUE);
+        assertThat(properties.getWaitStrategyConfig()).isNotNull();
+        assertThat(properties.getWaitStrategyConfig().getTimeoutBlockingTimeout())
+                .isEqualTo(Duration.ofMillis(1));
+        assertThat(properties.getWaitStrategyConfig().getLiteTimeoutBlockingTimeout())
+                .isEqualTo(Duration.ofMillis(1));
+        assertThat(properties.getWaitStrategyConfig().getPhasedBackoffSpinTimeout())
+                .isEqualTo(Duration.ofNanos(1000));
+        assertThat(properties.getWaitStrategyConfig().getPhasedBackoffYieldTimeout())
+                .isEqualTo(Duration.ofNanos(1_000_000));
+        assertThat(properties.getWaitStrategyConfig().getPhasedBackoffFallback())
+                .isEqualTo(WaitStrategyType.YIELDING);
     }
 }

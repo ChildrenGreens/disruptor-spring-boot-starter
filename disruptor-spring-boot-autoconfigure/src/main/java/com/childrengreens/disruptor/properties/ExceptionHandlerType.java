@@ -16,9 +16,43 @@
 package com.childrengreens.disruptor.properties;
 
 /**
- * Exception handling strategies.
+ * Exception handling strategies for Disruptor event processing.
+ *
+ * <p>Defines how exceptions thrown by event handlers should be handled
+ * at the ring level. This determines whether the Disruptor continues
+ * processing subsequent events or stops entirely when an error occurs.</p>
+ *
+ * <p>Configuration example:</p>
+ * <pre>{@code
+ * spring:
+ *   disruptor:
+ *     rings:
+ *       order:
+ *         exception-handler: LOG_AND_CONTINUE
+ * }</pre>
+ *
+ * @see RingProperties#getExceptionHandler()
+ * @see com.childrengreens.disruptor.annotation.ExceptionPolicy
  */
 public enum ExceptionHandlerType {
+
+    /**
+     * Log the exception and continue processing subsequent events.
+     * <p>The exception details (including ring name, sequence number, and
+     * event information) are logged at ERROR level, but the Disruptor
+     * continues to process the next events in the RingBuffer.</p>
+     * <p>Recommended for most production scenarios where event processing
+     * failures should not block the entire pipeline.</p>
+     */
     LOG_AND_CONTINUE,
+
+    /**
+     * Log the exception and halt the Disruptor.
+     * <p>The exception is logged at ERROR level, and then the Disruptor
+     * is stopped, preventing any further event processing.</p>
+     * <p>Use this strategy when event processing failures indicate a
+     * critical error that requires immediate attention and the system
+     * should not continue processing potentially corrupted data.</p>
+     */
     LOG_AND_HALT
 }

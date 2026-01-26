@@ -24,7 +24,6 @@ import org.springframework.context.SmartLifecycle;
 public class DisruptorLifecycle implements SmartLifecycle {
     private final DisruptorManager manager;
     private final DisruptorProperties properties;
-    private boolean running = false;
 
     public DisruptorLifecycle(DisruptorManager manager, DisruptorProperties properties) {
         this.manager = manager;
@@ -34,13 +33,11 @@ public class DisruptorLifecycle implements SmartLifecycle {
     @Override
     public void start() {
         manager.start();
-        running = true;
     }
 
     @Override
     public void stop() {
         manager.stop(properties.getShutdownTimeout(), properties.getShutdownStrategy());
-        running = false;
     }
 
     @Override
@@ -51,7 +48,7 @@ public class DisruptorLifecycle implements SmartLifecycle {
 
     @Override
     public boolean isRunning() {
-        return running;
+        return manager.isRunning();
     }
 
     @Override
