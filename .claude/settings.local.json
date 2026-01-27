@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(mvn clean compile:*)",
-      "Bash(mvn test:*)"
-    ]
-  }
-}
