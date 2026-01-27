@@ -17,11 +17,12 @@ A lightweight, production-ready Spring Boot starter for [LMAX Disruptor](https:/
 
 ```
 disruptor-spring-boot-starter
-├── disruptor-spring-boot-autoconfigure   # Auto-configuration and core infrastructure
+├── disruptor-spring-boot-context         # Core infrastructure (no Spring Boot dependency required)
 │   ├── annotation                        # @DisruptorSubscriber, @DisruptorEventType, etc.
 │   ├── properties                        # DisruptorProperties, RingProperties
 │   ├── core                              # DisruptorManager, DisruptorTemplate, DisruptorLifecycle
-│   ├── consumer                          # SubscriberBeanPostProcessor, HandlerAdapter, etc.
+│   └── consumer                          # SubscriberBeanPostProcessor, HandlerAdapter, etc.
+├── disruptor-spring-boot-autoconfigure   # Auto-configuration for Spring Boot
 │   ├── autoconfigure                     # DisruptorAutoConfiguration
 │   └── metrics                           # DisruptorMeterBinder, DisruptorEndpoint
 └── disruptor-spring-boot-starter         # Starter dependency (POM)

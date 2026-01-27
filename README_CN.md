@@ -15,11 +15,12 @@
 
 ```
 disruptor-spring-boot-starter
-├── disruptor-spring-boot-autoconfigure   # 自动配置和核心基础设施
+├── disruptor-spring-boot-context         # 核心基础设施（不强制依赖 Spring Boot）
 │   ├── annotation                        # @DisruptorSubscriber, @DisruptorEventType 等注解
 │   ├── properties                        # DisruptorProperties, RingProperties 配置类
 │   ├── core                              # DisruptorManager, DisruptorTemplate, DisruptorLifecycle
-│   ├── consumer                          # SubscriberBeanPostProcessor, HandlerAdapter 等
+│   └── consumer                          # SubscriberBeanPostProcessor, HandlerAdapter 等
+├── disruptor-spring-boot-autoconfigure   # Spring Boot 自动配置
 │   ├── autoconfigure                     # DisruptorAutoConfiguration 自动配置
 │   └── metrics                           # DisruptorMeterBinder, DisruptorEndpoint 监控
 └── disruptor-spring-boot-starter         # Starter 依赖（POM）
