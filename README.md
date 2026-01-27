@@ -4,6 +4,7 @@
 [![Java](https://img.shields.io/badge/Java-17+-blue.svg)](https://openjdk.org/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5+-green.svg)](https://spring.io/projects/spring-boot)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+[![codecov](https://codecov.io/github/ChildrenGreens/disruptor-spring-boot-starter/graph/badge.svg?token=2T0ZD3R0ZG)](https://codecov.io/github/ChildrenGreens/disruptor-spring-boot-starter)
 
 [中文文档](README_CN.md)
 
