@@ -10,32 +10,28 @@
         <version>${revision}</version>
     </parent>
 
-    <artifactId>disruptor-spring-boot-autoconfigure</artifactId>
-    <name>disruptor-spring-boot-autoconfigure</name>
-    <description>Auto-configuration for Disruptor Spring Boot Starter</description>
+    <artifactId>disruptor-spring-boot-context</artifactId>
+    <name>disruptor-spring-boot-context</name>
+    <description>Core context for Disruptor Spring Boot Starter</description>
 
     <dependencies>
         <dependency>
-            <groupId>com.childrengreens</groupId>
-            <artifactId>disruptor-spring-boot-context</artifactId>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-autoconfigure</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-configuration-processor</artifactId>
+            <artifactId>spring-boot</artifactId>
             <optional>true</optional>
         </dependency>
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-actuator</artifactId>
-            <optional>true</optional>
+            <groupId>com.lmax</groupId>
+            <artifactId>disruptor</artifactId>
+            <version>3.4.4</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

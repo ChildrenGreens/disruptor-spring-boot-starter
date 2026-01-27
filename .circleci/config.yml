@@ -18,6 +18,8 @@ jobs:
           command: mvn clean install -B -V
       - codecov/upload:
           file: "disruptor-spring-boot-autoconfigure/target/site/jacoco/jacoco.xml"
+      - codecov/upload:
+          file: "disruptor-spring-boot-context/target/site/jacoco/jacoco.xml"
 
 workflows:
   build-disruptor-starter:

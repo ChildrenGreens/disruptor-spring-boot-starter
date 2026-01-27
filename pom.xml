@@ -54,6 +54,7 @@
     </distributionManagement>
 
     <modules>
+        <module>disruptor-spring-boot-context</module>
         <module>disruptor-spring-boot-autoconfigure</module>
         <module>disruptor-spring-boot-starter</module>
     </modules>
@@ -65,7 +66,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
-        <spring-boot.version>3.5.9</spring-boot.version>
+        <spring-boot.version>3.5.10</spring-boot.version>
 
         <maven.surefire.plugin.version>3.3.1</maven.surefire.plugin.version>
         <jacoco.maven.plugin.version>0.8.12</jacoco.maven.plugin.version>
@@ -81,6 +82,12 @@
                 <version>${spring-boot.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>com.childrengreens</groupId>
+                <artifactId>disruptor-spring-boot-context</artifactId>
+                <version>${project.version}</version>
             </dependency>
 
             <dependency>
