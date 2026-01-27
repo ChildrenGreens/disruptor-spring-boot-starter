@@ -1,5 +1,10 @@
 # Disruptor Spring Boot Starter
 
+[![CircleCI](https://dl.circleci.com/status-badge/img/circleci/Uy51fPbZSgy15X8yEZTik4/8Sa63km4LZssiQ3mZkhN6W/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/circleci/Uy51fPbZSgy15X8yEZTik4/8Sa63km4LZssiQ3mZkhN6W/tree/main)
+[![Java](https://img.shields.io/badge/Java-17+-blue.svg)](https://openjdk.org/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5+-green.svg)](https://spring.io/projects/spring-boot)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+
 [中文文档](README_CN.md)
 
 A lightweight, production-ready Spring Boot starter for [LMAX Disruptor](https://github.com/LMAX-Exchange/disruptor). It provides configuration-driven rings, annotation-based subscribers, publish templates, graceful shutdown, and metrics/Actuator integration for observability.
